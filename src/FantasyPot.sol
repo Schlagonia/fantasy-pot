@@ -3,32 +3,64 @@ pragma solidity 0.8.18;
 
 import {BaseTokenizedStrategy} from "@tokenized-strategy/BaseTokenizedStrategy.sol";
 
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
+import {IPool} from "./interfaces/Aave/V3/IPool.sol";
+import {IAToken} from "./interfaces/Aave/V3/IAtoken.sol";
 
-/**
- * The `TokenizedStrategy` variable can be used to retrieve the strategies
- * specifc storage data your contract.
- *
- *       i.e. uint256 totalAssets = TokenizedStrategy.totalAssets()
- *
- * This can not be used for write functions. Any TokenizedStrategy
- * variables that need to be udpated post deployement will need to
- * come from an external call from the strategies specific `management`.
- */
+import {TokenizedHelper} from "./TokenizedHelper.sol";
 
-// NOTE: To implement permissioned functions you can use the onlyManagement and onlyKeepers modifiers
-
-contract Strategy is BaseTokenizedStrategy {
+contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     using SafeERC20 for ERC20;
+
+    struct Player {
+        bool registered;
+        bool payed;
+        uint256 votes;
+        mapping (address => bool) votedFor;
+    }
+
+    // The pool to deposit and withdraw through.
+    IPool public constant lendingPool =
+        IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
+
+    // The token that we get in return for deposits.
+    IAToken public immutable aToken;
+
+    // Start of the regular season. 
+    // September 7th, 2023 8:20 EST.
+    uint256 public constant start = 1694089200;
+
+    // End of regular season. 
+    // January 7th, 2024 Midnight EST.
+    uint256 public constant end = 1704690000;
+
+    address public winner;
+
+    mapping (address => Player) public players;
+
+    uint256 public immutable buyIn;
+
+    uint256 public numberOfPlayers;
 
     constructor(
         address _asset,
-        string memory _name
-    ) BaseTokenizedStrategy(_asset, _name) {}
+        string memory _name,
+        uint256 _buyIn
+    ) BaseTokenizedStrategy(_asset, _name) {
+        // Set the aToken based on the asset we are using.
+        aToken = IAToken(lendingPool.getReserveData(_asset).aTokenAddress);
+
+        // Make sure its a real token.
+        require(address(aToken) != address(0), "no aave pool");
+
+        // Make approve the lending pool for cheaper deposits.
+        ERC20(_asset).safeApprove(address(lendingPool), type(uint256).max);
+
+        buyIn = _buyIn;
+    }
 
     /*//////////////////////////////////////////////////////////////
                 NEEDED TO BE OVERRIDEN BY STRATEGIST
@@ -46,9 +78,7 @@ contract Strategy is BaseTokenizedStrategy {
      * to deposit in the yield source.
      */
     function _deployFunds(uint256 _amount) internal override {
-        // TODO: implement deposit logice EX:
-        //
-        //      lendingpool.deposit(asset, _amount ,0);
+        lendingPool.supply(asset, _amount, address(this), 0);
     }
 
     /**
@@ -73,9 +103,11 @@ contract Strategy is BaseTokenizedStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        // TODO: implement withdraw logic EX:
-        //
-        //      lendingPool.withdraw(asset, _amount);
+        lendingPool.withdraw(
+            asset,
+            Math.min(aToken.balanceOf(address(this)), _amount),
+            address(this)
+        );
     }
 
     /**
@@ -105,11 +137,12 @@ contract Strategy is BaseTokenizedStrategy {
         override
         returns (uint256 _totalAssets)
     {
-        // TODO: Implement harvesting logic and accurate accounting EX:
-        //
-        //      _claminAndSellRewards();
-        //      _totalAssets = aToken.balanceof(address(this)) + ERC20(asset).balanceOf(address(this));
-        _totalAssets = ERC20(asset).balanceOf(address(this));
+        // Dont record profits till the season starts. 
+        require(block.timestamp > start, "Season hasnt started");
+        
+        _totalAssets =
+            aToken.balanceOf(address(this)) +
+            ERC20(asset).balanceOf(address(this));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -138,19 +171,13 @@ contract Strategy is BaseTokenizedStrategy {
      * till report() is called.
      *
      * @param _totalIdle The current amount of idle funds that are available to deploy.
-     *
-    function _tend(uint256 _totalIdle) internal override {}
-    */
-
-    /**
-     * @notice Returns wether or not tend() should be called by a keeper.
-     * @dev Optional trigger to override if tend() will be used by the strategy.
-     * This must be implemented if the strategy hopes to invoke _tend().
-     *
-     * @return . Should return true if tend() should be called by keeper or false if not.
-     *
-    function tendTrigger() public view override returns (bool) {}
-    */
+     */
+    function _tend(uint256 _totalIdle) internal override {
+        uint256 balance = ERC20(asset).balanceOf(address(this));
+        if (balance != 0) {
+            _deployFunds(balance);
+        }
+    }
 
     /**
      * @notice Gets the max amount of `asset` that an adress can deposit.
@@ -172,18 +199,21 @@ contract Strategy is BaseTokenizedStrategy {
      *
      * @param . The address that is depositing into the strategy.
      * @return . The avialable amount the `_owner` can deposit in terms of `asset`
-     *
+     */
     function availableDepositLimit(
         address _owner
     ) public view override returns (uint256) {
-        TODO: If desired Implement deposit limit logic and any needed state variables .
-        
-        EX:    
-            uint256 totalAssets = TokenizedStrategy.totalAssets();
-            return totalAssets >= depositLimit ? 0 : depositLimit - totalAssets;
-    }
-    */
+        // If we are past the start no more deposits.
+        if (block.timestamp > start) return 0;
 
+        // If the player has been registered but hasn't payed.
+        if (players[_owner].registered && !players[_owner].payed) {
+            return buyIn;
+        } else {
+            return 0;
+        }
+    }
+    
     /**
      * @notice Gets the max amount of `asset` that can be withdrawn.
      * @dev Defaults to an unlimited amount for any address. But can
@@ -201,45 +231,80 @@ contract Strategy is BaseTokenizedStrategy {
      *
      * @param . The address that is withdrawing from the strategy.
      * @return . The avialable amount that can be withdrawn in terms of `asset`
-     *
+     */
     function availableWithdrawLimit(
         address _owner
     ) public view override returns (uint256) {
-        TODO: If desired Implement withdraw limit logic and any needed state variables.
-        
-        EX:    
-            return TokenizedStrategy.totalIdle();
-    }
-    */
+        // Can't withdraw till the season ends.
+        if (end > block.timestamp) return 0;
 
-    /**
-     * @dev Optional function for a strategist to override that will
-     * allow management to manually withdraw deployed funds from the
-     * yield source if a strategy is shutdown.
-     *
-     * This should attempt to free `_amount`, noting that `_amount` may
-     * be more than is currently deployed.
-     *
-     * NOTE: This will not realize any profits or losses. A seperate
-     * {report} will be needed in order to record any profit/loss. If
-     * a report may need to be called after a shutdown it is important
-     * to check if the strategy is shutdown during {_harvestAndReport}
-     * so that it does not simply re-deploy all funds that had been freed.
-     *
-     * EX:
-     *   if(freeAsset > 0 && !TokenizedStrategy.isShutdown()) {
-     *       depositFunds...
-     *    }
-     *
-     * @param _amount The amount of asset to attempt to free.
-     *
-    function _emergencyWithdraw(uint256 _amount) internal override {
-        TODO: If desired implement simple logic to free deployed funds.
+        // Only the winner can withdraw.
+        if (_owner == winner) return type(uint256).max;
 
-        EX:
-            _amount = min(_amount, atoken.balanceOf(address(this)));
-            lendingPool.withdraw(asset, _amount);
+        return 0;
     }
 
-    */
+    function registerNewPlayer(address _player) external onlyManagement {
+        require(start > block.timestamp, "season started");
+        require(!players[_player].registered, "already registered");
+
+        players[_player].registered = true;
+        numberOfPlayers += 1;
+    }
+
+    function youAreTheWeakestLink(address _loser) external {
+        require(players[msg.sender].registered, "Not a player");
+        require(players[_loser].registered, "Loser not a player");
+        require(!players[msg.sender].votedFor[_loser], "already voted");
+
+        players[_loser].votes += 1;
+        players[msg.sender].votedFor[_loser] = true;
+
+        if (players[_loser].votes == numberOfPlayers - 1) {
+            // Unregister the loser.
+            players[_loser].registered = false;
+            StrategyData storage S = _strategyStorage();
+            // Burn the losers shares.
+            S.totalSupply -= S.balances[_loser];
+            S.balances[_loser] = 0;
+        }
+    }
+
+    function deposit(
+        uint256 assets,
+        address receiver
+    ) external returns (uint256 shares) {
+        require(players[msg.sender].registered, "!registered");
+        require(!players[msg.sender].payed, "Already payed");
+        require(assets == buyIn, "Wrong amount");
+
+        (bool success, bytes memory result) = tokenizedStrategyAddress.
+            delegatecall(
+            abi.encodeWithSignature(
+                "deposit(uint256,address)",
+                assets,
+                receiver
+            )
+        );
+
+        if (!success) {
+            assembly {
+                let ptr := mload(0x40)
+                let size := returndatasize()
+                returndatacopy(ptr, 0, size)
+                revert(ptr, size)
+            }
+        }
+
+        players[msg.sender].payed = true;
+
+        return abi.decode(result, (uint256));
+    }
+
+    function mint(
+        uint256 shares,
+        address receiver
+    ) external returns (uint256 assets) {
+        require(false, "Must Deposit");
+    }
 }
