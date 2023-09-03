@@ -12,7 +12,7 @@ import {IAToken} from "./interfaces/Aave/V3/IAtoken.sol";
 
 import {TokenizedHelper} from "./TokenizedHelper.sol";
 
-contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
+contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     using SafeERC20 for ERC20;
 
     struct Player {
@@ -28,11 +28,11 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     // The token that we get in return for deposits.
     IAToken public immutable aToken;
 
-    // Start of the regular season. 
+    // Start of the regular season.
     // September 7th, 2023 8:20 EST.
     uint256 public constant start = 1694089200;
 
-    // End of regular season. 
+    // End of regular season.
     // January 7th, 2024 Midnight EST.
     uint256 public constant end = 1704690000;
 
@@ -40,7 +40,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     address public winner;
 
     // Mapping of a players address to theie Player struct
-    mapping (address => Player) public players;
+    mapping(address => Player) public players;
 
     // List of all players who registerd and payed
     address[] public playerList;
@@ -145,7 +145,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
         override
         returns (uint256 _totalAssets)
     {
-        // Dont record profits till the season ends. 
+        // Dont record profits till the season ends.
         require(block.timestamp > end, "Season hasnt ended");
 
         _totalAssets =
@@ -221,7 +221,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
             return 0;
         }
     }
-    
+
     /**
      * @notice Gets the max amount of `asset` that can be withdrawn.
      * @dev Defaults to an unlimited amount for any address. But can
@@ -254,10 +254,10 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     //////////////////////////////////////////////////////////////*/
 
     /**
-    * @notice Allows the manager to register a new player.
-    *
-    * This will allow that player to deposit in the buy in and
-    * get added to the player list once the buy in has been payed.
+     * @notice Allows the manager to register a new player.
+     *
+     * This will allow that player to deposit in the buy in and
+     * get added to the player list once the buy in has been payed.
      */
     function registerNewPlayer(address _player) external onlyManagement {
         require(start > block.timestamp, "season started");
@@ -267,18 +267,20 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     }
 
     /**
-    * @notice Allows managment to declare a winner!
-    *
-    * Will burn every other players shares and report the accumulated
-    * profits so that the winner can now withdraw the full amount
-    * of their winnings.
-    *
+     * @notice Allows managment to declare a winner!
+     *
+     * Will burn every other players shares and report the accumulated
+     * profits so that the winner can now withdraw the full amount
+     * of their winnings.
+     *
      */
-    function winnerWinnerChickenDinner(address _winner) external onlyManagement {
+    function winnerWinnerChickenDinner(
+        address _winner
+    ) external onlyManagement {
         require(winner == address(0), "Winner already Declared");
         require(players[_winner].payed, "!playing");
         require(TokenizedStrategy.balanceOf(_winner) != 0, "!shares");
-        
+
         address[] memory _playerList = playerList;
         uint256 numPlayers = _playerList.length;
         StrategyData storage S = _strategyStorage();
@@ -313,12 +315,12 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     //////////////////////////////////////////////////////////////*/
 
     /**
-    * @notice Stage a Coup against the current management!
-    *
-    * If every other player other than the current manager 
-    * votes to stage a Coup the current management will be
-    * ceremonially removed from office and another player 
-    * will be chosen at random to take over the duties.
+     * @notice Stage a Coup against the current management!
+     *
+     * If every other player other than the current manager
+     * votes to stage a Coup the current management will be
+     * ceremonially removed from office and another player
+     * will be chosen at random to take over the duties.
      */
     function stageACoup() external {
         require(players[msg.sender].registered, "!registered");
@@ -327,15 +329,22 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
         require(msg.sender != TokenizedStrategy.management(), "No Suicide");
 
         // Add another soldier to the firing line
-        couped ++;
+        couped++;
+        players[msg.sender].couped = true;
 
         // If the full party has spoken.
         if (couped == playerList.length - 1) {
             // Remove the current manager and choose a new one at random.
-            address newManagement = playerList[uint256(keccak256(abi.encodePacked(block.timestamp))) % playerList.length];
+            address newManagement = playerList[
+                uint256(keccak256(abi.encodePacked(block.timestamp))) %
+                    playerList.length
+            ];
             if (newManagement == TokenizedStrategy.management()) {
                 // New boss cant be the same as the old boss.
-                newManagement = playerList[uint256(keccak256(abi.encodePacked(block.timestamp - 1))) % playerList.length];
+                newManagement = playerList[
+                    uint256(keccak256(abi.encodePacked(block.timestamp - 1))) %
+                        playerList.length
+                ];
             }
 
             // Set your new Dictator.
@@ -358,14 +367,14 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
         require(!players[receiver].payed, "Already payed");
         require(assets == buyIn, "Wrong amount");
 
-        (bool success, bytes memory result) = tokenizedStrategyAddress.
-            delegatecall(
-            abi.encodeWithSignature(
-                "deposit(uint256,address)",
-                assets,
-                receiver
-            )
-        );
+        (bool success, bytes memory result) = tokenizedStrategyAddress
+            .delegatecall(
+                abi.encodeWithSignature(
+                    "deposit(uint256,address)",
+                    assets,
+                    receiver
+                )
+            );
 
         if (!success) {
             assembly {

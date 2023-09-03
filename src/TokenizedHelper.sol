@@ -1,20 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.18;
 
-
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract TokenizedHelper {
-
     struct StrategyData {
         // The ERC20 compliant underlying asset that will be
-        // used by the Strategy. We can keep this as an ERC20 
-        // instance because the `BaseTokenizedStrategy` holds 
+        // used by the Strategy. We can keep this as an ERC20
+        // instance because the `BaseTokenizedStrategy` holds
         // the address of `asset` as an immutable variable to
         // meet the 4626 standard.
         ERC20 asset;
-        
-
         // These are the corresponding ERC20 variables needed for the
         // strategies token that is issued and burned on each deposit or withdraw.
         uint8 decimals; // The amount of decimals that `asset` and strategy use.
@@ -25,15 +21,11 @@ contract TokenizedHelper {
         mapping(address => uint256) nonces; // Mapping of nonces used for permit functions.
         mapping(address => uint256) balances; // Mapping to track current balances for each account that holds shares.
         mapping(address => mapping(address => uint256)) allowances; // Mapping to track the allowances for the strategies shares.
-        
-
         // Assets data to track totals the strategy holds.
         // We manually track idle instead of relying on asset.balanceOf(address(this))
         // to prevent PPS manipulation through airdrops.
         uint256 totalIdle; // The total amount of loose `asset` the strategy holds.
         uint256 totalDebt; // The total amount `asset` that is currently deployed by the strategy.
-        
-
         // Variables for profit reporting and locking.
         // We use uint128 for time stamps which is 1,025 years in the future.
         uint256 profitUnlockingRate; // The rate at which locked profit is unlocking.
@@ -42,8 +34,6 @@ contract TokenizedHelper {
         uint32 profitMaxUnlockTime; // The amount of seconds that the reported profit unlocks over.
         uint16 performanceFee; // The percent in basis points of profit that is charged as a fee.
         address performanceFeeRecipient; // The address to pay the `performanceFee` to.
-
-
         // Access management variables.
         address management; // Main address that can set all configurable variables.
         address keeper; // Address given permission to call {report} and {tend}.
@@ -51,7 +41,6 @@ contract TokenizedHelper {
         bool entered; // Bool to prevent reentrancy.
         bool shutdown; // Bool that can be used to stop deposits into the strategy.
     }
-
 
     bytes32 private constant BASE_STRATEGY_STORAGE =
         bytes32(uint256(keccak256("yearn.base.strategy.storage")) - 1);
