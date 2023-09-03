@@ -18,11 +18,10 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     struct Player {
         bool registered;
         bool payed;
-        uint256 votes;
-        mapping (address => bool) votedFor;
+        bool couped;
     }
 
-    // The pool to deposit and withdraw through.
+    // Aave pool to deposit and withdraw through.
     IPool public constant lendingPool =
         IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
 
@@ -37,13 +36,21 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     // January 7th, 2024 Midnight EST.
     uint256 public constant end = 1704690000;
 
+    // Winner of the league.
     address public winner;
 
+    // Mapping of a players address to theie Player struct
     mapping (address => Player) public players;
 
+    // List of all players who registerd and payed
+    address[] public playerList;
+
+    // Amount required to buy in.
     uint256 public immutable buyIn;
 
-    uint256 public numberOfPlayers;
+    // Number of players that have couped against
+    // The current managment.
+    uint256 public couped;
 
     constructor(
         address _asset,
@@ -56,9 +63,10 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
         // Make sure its a real token.
         require(address(aToken) != address(0), "no aave pool");
 
-        // Make approve the lending pool for cheaper deposits.
+        // Approve the lending pool for cheaper deposits.
         ERC20(_asset).safeApprove(address(lendingPool), type(uint256).max);
 
+        // Set the buy in.
         buyIn = _buyIn;
     }
 
@@ -137,9 +145,9 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
         override
         returns (uint256 _totalAssets)
     {
-        // Dont record profits till the season starts. 
-        require(block.timestamp > start, "Season hasnt started");
-        
+        // Dont record profits till the season ends. 
+        require(block.timestamp > end, "Season hasnt ended");
+
         _totalAssets =
             aToken.balanceOf(address(this)) +
             ERC20(asset).balanceOf(address(this));
@@ -235,47 +243,119 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
     function availableWithdrawLimit(
         address _owner
     ) public view override returns (uint256) {
-        // Can't withdraw till the season ends.
-        if (end > block.timestamp) return 0;
-
         // Only the winner can withdraw.
         if (_owner == winner) return type(uint256).max;
 
         return 0;
     }
 
+    /*//////////////////////////////////////////////////////////////
+                        PLAYER MANAGEMENT
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+    * @notice Allows the manager to register a new player.
+    *
+    * This will allow that player to deposit in the buy in and
+    * get added to the player list once the buy in has been payed.
+     */
     function registerNewPlayer(address _player) external onlyManagement {
         require(start > block.timestamp, "season started");
         require(!players[_player].registered, "already registered");
 
         players[_player].registered = true;
-        numberOfPlayers += 1;
     }
 
-    function youAreTheWeakestLink(address _loser) external {
-        require(players[msg.sender].registered, "Not a player");
-        require(players[_loser].registered, "Loser not a player");
-        require(!players[msg.sender].votedFor[_loser], "already voted");
+    /**
+    * @notice Allows managment to declare a winner!
+    *
+    * Will burn every other players shares and report the accumulated
+    * profits so that the winner can now withdraw the full amount
+    * of their winnings.
+    *
+     */
+    function winnerWinnerChickenDinner(address _winner) external onlyManagement {
+        require(winner == address(0), "Winner already Declared");
+        require(players[_winner].payed, "!playing");
+        require(TokenizedStrategy.balanceOf(_winner) != 0, "!shares");
+        
+        address[] memory _playerList = playerList;
+        uint256 numPlayers = _playerList.length;
+        StrategyData storage S = _strategyStorage();
+        // Burn every other players shares.
+        for (uint256 i; i < numPlayers; ++i) {
+            address _player = _playerList[i];
+            if (_player == _winner) continue;
 
-        players[_loser].votes += 1;
-        players[msg.sender].votedFor[_loser] = true;
-
-        if (players[_loser].votes == numberOfPlayers - 1) {
-            // Unregister the loser.
-            players[_loser].registered = false;
-            StrategyData storage S = _strategyStorage();
             // Burn the losers shares.
-            S.totalSupply -= S.balances[_loser];
-            S.balances[_loser] = 0;
+            S.totalSupply -= S.balances[_player];
+            S.balances[_player] = 0;
+        }
+
+        // Set the winner to receive any performance fees
+        S.performanceFeeRecipient = _winner;
+
+        // Set the winner as the new manager.
+        S.management = _winner;
+
+        // Set the strategy as its own Keeper in order to report.
+        S.keeper = address(this);
+
+        // Report all profits for the winner to withdraw
+        TokenizedStrategy.report();
+
+        // Set the winner
+        winner = _winner;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            GAMES
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+    * @notice Stage a Coup against the current management!
+    *
+    * If every other player other than the current manager 
+    * votes to stage a Coup the current management will be
+    * ceremonially removed from office and another player 
+    * will be chosen at random to take over the duties.
+     */
+    function stageACoup() external {
+        require(players[msg.sender].registered, "!registered");
+        require(players[msg.sender].payed, "!payed");
+        require(!players[msg.sender].couped, "already couped");
+        require(msg.sender != TokenizedStrategy.management(), "No Suicide");
+
+        // Add another soldier to the firing line
+        couped ++;
+
+        // If the full party has spoken.
+        if (couped == playerList.length - 1) {
+            // Remove the current manager and choose a new one at random.
+            address newManagement = playerList[uint256(keccak256(abi.encodePacked(block.timestamp))) % playerList.length];
+            if (newManagement == TokenizedStrategy.management()) {
+                // New boss cant be the same as the old boss.
+                newManagement = playerList[uint256(keccak256(abi.encodePacked(block.timestamp - 1))) % playerList.length];
+            }
+
+            // Set your new Dictator.
+            _strategyStorage().management == newManagement;
+
+            // Reset `couped` in case it doesn't work out with the new guy
+            couped = 0;
         }
     }
+
+    /*//////////////////////////////////////////////////////////////
+                        4626 OVERRIDES
+    //////////////////////////////////////////////////////////////*/
 
     function deposit(
         uint256 assets,
         address receiver
     ) external returns (uint256 shares) {
-        require(players[msg.sender].registered, "!registered");
-        require(!players[msg.sender].payed, "Already payed");
+        require(players[receiver].registered, "!registered");
+        require(!players[receiver].payed, "Already payed");
         require(assets == buyIn, "Wrong amount");
 
         (bool success, bytes memory result) = tokenizedStrategyAddress.
@@ -296,15 +376,30 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper{
             }
         }
 
-        players[msg.sender].payed = true;
+        players[receiver].payed = true;
+        playerList.push(receiver);
 
         return abi.decode(result, (uint256));
     }
 
+    // Dont mint, cause I dont want to have to rewrite all the deposit code.
     function mint(
         uint256 shares,
         address receiver
     ) external returns (uint256 assets) {
         require(false, "Must Deposit");
+    }
+
+    // Dont allow transfers so we can burn the shares of the losers
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(false, "NO GIVE BACKS!");
+    }
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) public returns (bool) {
+        require(false, "Nice Try");
     }
 }
