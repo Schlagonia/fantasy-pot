@@ -485,7 +485,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      *        [6] [7] [8]
      *
      */
-    function getBoard(bytes32 _gameId) public view returns (uint8[] memory) {
+    function getBoard(bytes32 _gameId) public view returns (uint8[9] memory) {
         return TicTacToeGames[_gameId].board;
     }
 
@@ -493,7 +493,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         return TicTacToeGames[_gameId].turn;
     }
 
-    function _isAWinner(uint8[] memory board) internal view returns (bool) {
+    function _isAWinner(uint8[9] memory board) internal view returns (bool) {
         // First Row.
         if (_isTheSame(board[0], board[1], board[2])) return true;
         // Second Row
@@ -514,13 +514,13 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     function _isTheSame(
         uint8 i,
         uint8 j,
-        uint28 k
+        uint8 k
     ) internal view returns (bool) {
         if (i != 0 && i == j && j == k) return true;
     }
 
     function _boardIsFull(
-        uint8[] memory board
+        uint8[9] memory board
     ) internal view returns (bool _full) {
         // Default to true. So we need to find and empty spot.
         _full = true;
