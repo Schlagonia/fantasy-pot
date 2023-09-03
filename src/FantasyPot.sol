@@ -21,6 +21,14 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         bool couped;
     }
 
+    struct TicTacToe {
+        address player1;
+        address player2;
+        uint256 buyIn;
+        address turn;
+        uint8[9] board;
+    }
+
     // Aave pool to deposit and withdraw through.
     IPool public constant lendingPool =
         IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
@@ -47,6 +55,10 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
 
     // Amount required to buy in.
     uint256 public immutable buyIn;
+
+    // Storage for Games.
+
+    mapping(bytes32 => TicTacToe) public TicTacToeGames;
 
     // Number of players that have couped against
     // The current managment.
@@ -259,7 +271,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      * This will allow that player to deposit in the buy in and
      * get added to the player list once the buy in has been payed.
      */
-    function registerNewPlayer(address _player) external onlyManagement {
+    function activateNewPlayer(address _player) external onlyManagement {
         require(start > block.timestamp, "season started");
         require(!players[_player].registered, "already registered");
 
@@ -313,6 +325,214 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     /*//////////////////////////////////////////////////////////////
                             GAMES
     //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Challenge ye rival to a game of Tic Tac Toe.
+     *
+     * This is step 1 of 2 to initate a new game. The opposing player will
+     * also have to accept the game by calling {acceptNewTicTacToeGame}.
+     *
+     * Each player will take turns calling {makeMove} until either one
+     * player wins or the board is filled up.
+     *
+     * The winner will get their money back plus 80% of the other players '
+     * buyin as a prize. If it ends in a draw each player gets 90% of their
+     * money back.
+     *
+     * Either way the pot keeps 20% as a house fee to add to then final fantasy pot.
+     *
+     * NOTE: Each player must approve this address to pull the `_buyin` amount
+     *   from their wallet before the second player calls {acceptNewTicTacToeGame}
+     * NOTE: Player 1 must be the msg.sender
+     */
+    function startNewTicTacToeGame(
+        address _player1,
+        address _player2,
+        uint256 _buyIn
+    ) external {
+        require(block.timestamp < end, "Season has ended");
+        require(
+            _player1 != address(0) && _player2 != address(0),
+            "Vitalik Can't play"
+        );
+        require(_player1 != _player2, "freindly fire");
+        require(_player1 == msg.sender, "!player1");
+        // Buy in has to be divisible by 20 for the Pot fee.
+        require(_buyIn > 20, "What is this? A wager for ants!");
+
+        bytes32 _gameId = getGameId(_player1, _player2, _buyIn);
+        require(
+            TicTacToeGames[_gameId].player1 == address(0),
+            "Game in session"
+        );
+
+        TicTacToe memory newGame;
+        newGame.player1 = _player1;
+        newGame.player2 = _player2;
+        newGame.buyIn = _buyIn;
+
+        TicTacToeGames[_gameId] = newGame;
+    }
+
+    /**
+     * @notice Accept a previously started game that you are player2 in.
+     *
+     * This will pull the funds from both players and set the msg.sender
+     * as the first player to go.
+     */
+    function acceptNewTicTacToeGame(bytes32 _id) external {
+        TicTacToe memory game = TicTacToeGames[_id];
+        require(game.player1 != address(0), "must start game first");
+        require(game.player2 == msg.sender, "Cant accept someone elses game");
+
+        // Transfer the funds in from both players.
+        // NOTE: Both players must have approved the Pot to pull the funds.
+        ERC20(asset).safeTransferFrom(game.player1, address(this), game.buyIn);
+        ERC20(asset).safeTransferFrom(msg.sender, address(this), game.buyIn);
+
+        // Gotta earn that sweet yield while the game is played.
+        _deployFunds(ERC20(asset).balanceOf(address(this)));
+
+        // Player 2 Goes first.
+        TicTacToeGames[_id].turn = msg.sender;
+    }
+
+    /**
+     * @notice This is the thick of the action.
+     *
+     *  Once a game has started players will take turns making their move
+     * on the board. The board is repersented as an array where each index
+     * or `spot` corresponds to the diagram below.
+     *
+     *        [0] [1] [2]
+     *
+     *        [3] [4] [5]
+     *
+     *        [6] [7] [8]
+     *
+     * After each turn the board will be checked for a winner or
+     * if the board is full and pay out the amounts accordingly.
+     *
+     * A board space having a 0 means its empty. 1 corresponds to
+     * player1 and 2 corresponds to player2.
+     *
+     * Use the supplied helper function to get things like your
+     * `_gameId`, whos turn it is or the current state of the board.
+     *
+     */
+    function makeMove(bytes32 _gameId, uint8 _spot) external {
+        TicTacToe memory game = TicTacToeGames[_gameId];
+        require(game.turn == msg.sender, "Not your turn");
+        require(_spot < 9, "invalid spot");
+        require(game.board[_spot] == 0, "Invalid move");
+
+        // Player1 is 1 and player2 is 2.
+        uint8 marker = game.player1 == msg.sender ? 1 : 2;
+
+        TicTacToeGames[_gameId].board[_spot] = marker;
+
+        // If the move is a winner.
+        if (_isAWinner(TicTacToeGames[_gameId].board)) {
+            // Pay the winner and rug the loser.
+            // Pot keeps 10% of the buyins for the final fund.
+            uint256 _toPay = (game.buyIn * 2) - (game.buyIn / 20);
+            // Pull them from Aave
+            _freeFunds(_toPay);
+            // Pay the winner.
+            ERC20(asset).safeTransfer(msg.sender, _toPay);
+
+            // Delete game
+            delete TicTacToeGames[_gameId];
+
+            // If The game is full.
+        } else if (_boardIsFull(TicTacToeGames[_gameId].board)) {
+            // Pay back both players.
+            // The pots keeps its cut cause the house always wins.
+            uint256 _toPay = (game.buyIn * 2) - (game.buyIn / 20);
+            // Pull them from Aave
+            _freeFunds(_toPay);
+            // Transfer to each player.
+            ERC20(asset).safeTransfer(msg.sender, _toPay / 2);
+            ERC20(asset).safeTransfer(
+                marker == 1 ? game.player2 : game.player1,
+                _toPay / 2
+            );
+
+            // Delete game
+            delete TicTacToeGames[_gameId];
+        } else {
+            // Set the next turn.
+            game.turn = marker == 1 ? game.player2 : game.player1;
+        }
+    }
+
+    function getGameId(
+        address _player1,
+        address _player2,
+        uint256 _buyIn
+    ) public view returns (bytes32) {
+        return keccak256(abi.encodePacked(_player1, _player2, _buyIn));
+    }
+
+    /**
+     * The board is repersented as an array where each index
+     * or `spot` corresponds to the diagram below.
+     *
+     *        [0] [1] [2]
+     *
+     *        [3] [4] [5]
+     *
+     *        [6] [7] [8]
+     *
+     */
+    function getBoard(bytes32 _gameId) public view returns (uint8[] memory) {
+        return TicTacToeGames[_gameId].board;
+    }
+
+    function getNextPlayer(bytes32 _gameId) public view returns (address) {
+        return TicTacToeGames[_gameId].turn;
+    }
+
+    function _isAWinner(uint8[] memory board) internal view returns (bool) {
+        // First Row.
+        if (_isTheSame(board[0], board[1], board[2])) return true;
+        // Second Row
+        if (_isTheSame(board[3], board[4], board[5])) return true;
+        // Third Row.
+        if (_isTheSame(board[6], board[7], board[8])) return true;
+        // First Column.
+        if (_isTheSame(board[0], board[3], board[6])) return true;
+        // Second Column
+        if (_isTheSame(board[1], board[4], board[7])) return true;
+        // Third Column
+        if (_isTheSame(board[2], board[5], board[8])) return true;
+        // Diagonals
+        if (_isTheSame(board[0], board[4], board[8])) return true;
+        if (_isTheSame(board[2], board[4], board[6])) return true;
+    }
+
+    function _isTheSame(
+        uint8 i,
+        uint8 j,
+        uint28 k
+    ) internal view returns (bool) {
+        if (i != 0 && i == j && j == k) return true;
+    }
+
+    function _boardIsFull(
+        uint8[] memory board
+    ) internal view returns (bool _full) {
+        // Default to true. So we need to find and empty spot.
+        _full = true;
+
+        for (uint256 i; i < 9; ++i) {
+            // If we find an empty spot.
+            if (board[i] == 0) {
+                // Boards not full.
+                return false;
+            }
+        }
+    }
 
     /**
      * @notice Stage a Coup against the current management!
