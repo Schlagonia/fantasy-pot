@@ -36,13 +36,13 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     // The token that we get in return for deposits.
     IAToken public immutable aToken;
 
-    // Start of the regular season.
-    // September 7th, 2023 8:20 EST.
-    uint256 public constant start = 1694089200;
+    // timestamp of Start of the regular season.
+    // No more deposits after this date.
+    uint256 public immutable start;
 
-    // End of regular season.
-    // January 7th, 2024 Midnight EST.
-    uint256 public constant end = 1704690000;
+    // time stamp of End of regular season.
+    // Cant declare a winner or withdra till this time.
+    uint256 public immutable end;
 
     // Winner of the league.
     address public winner;
@@ -66,7 +66,9 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     constructor(
         address _asset,
         string memory _name,
-        uint256 _buyIn
+        uint256 _buyIn,
+        uint256 _start,
+        uint256 _end
     ) BaseTokenizedStrategy(_asset, _name) {
         // Set the aToken based on the asset we are using.
         aToken = IAToken(lendingPool.getReserveData(_asset).aTokenAddress);
@@ -79,6 +81,10 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
 
         // Set the buy in.
         buyIn = _buyIn;
+
+        // start and end Times.
+        start = _start;
+        end = _end;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -380,8 +386,8 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      * This will pull the funds from both players and set the msg.sender
      * as the first player to go.
      */
-    function acceptNewTicTacToeGame(bytes32 _id) external {
-        TicTacToe memory game = TicTacToeGames[_id];
+    function acceptNewTicTacToeGame(bytes32 _gameId) external {
+        TicTacToe memory game = TicTacToeGames[_gameId];
         require(game.player1 != address(0), "must start game first");
         require(game.player2 == msg.sender, "Cant accept someone elses game");
 
@@ -394,7 +400,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         _deployFunds(ERC20(asset).balanceOf(address(this)));
 
         // Player 2 Goes first.
-        TicTacToeGames[_id].turn = msg.sender;
+        TicTacToeGames[_gameId].turn = msg.sender;
     }
 
     /**
