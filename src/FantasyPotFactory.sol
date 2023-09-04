@@ -40,6 +40,9 @@ contract FantasyPotFactory {
         // Set profit unlock time to 1.
         newPot.setProfitMaxUnlockTime(1);
 
+        // Set performance fee recipient.
+        newPot.setPerformanceFeeRecipient(msg.sender);
+
         // Set Pending Management.
         newPot.setPendingManagement(msg.sender);
 

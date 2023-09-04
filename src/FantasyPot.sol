@@ -369,8 +369,8 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         );
         require(_player1 != _player2, "friendly fire");
         require(_player1 == msg.sender, "!player1");
-        // Buy in has to be divisible by 20 for the Pot fee.
-        require(_buyIn > 20, "What is this? A wager for ants!");
+        // Buy in has to be divisible by 5 for the Pot fee.
+        require(_buyIn > 5, "What is this? A wager for ants!");
 
         bytes32 _gameId = getGameId(_player1, _player2, _buyIn);
         require(
@@ -429,7 +429,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      * A board space having a 0 means its empty. 1 corresponds to
      * player1 and 2 corresponds to player2.
      *
-     * Use the supplied helper function to get things like your
+     * Use the supplied helper functions to get things like your
      * `_gameId`, whos turn it is or the current state of the board.
      *
      */
@@ -448,7 +448,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         if (_isAWinner(TicTacToeGames[_gameId].board)) {
             // Pay the winner and rug the loser.
             // Pot keeps 10% of the buyins for the final fund.
-            uint256 _toPay = (game.buyIn * 2) - (game.buyIn / 20);
+            uint256 _toPay = (game.buyIn * 2) - (game.buyIn / 5);
             // Pull them from Aave
             _freeFunds(_toPay);
             // Pay the winner.
@@ -461,7 +461,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         } else if (_boardIsFull(TicTacToeGames[_gameId].board)) {
             // Pay back both players.
             // The pots keeps its cut cause the house always wins.
-            uint256 _toPay = (game.buyIn * 2) - (game.buyIn / 20);
+            uint256 _toPay = (game.buyIn * 2) - (game.buyIn / 5);
             // Pull them from Aave
             _freeFunds(_toPay);
             // Transfer to each player.
@@ -576,8 +576,8 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
             if (newManagement == TokenizedStrategy.management()) {
                 // New boss cant be the same as the old boss.
                 newManagement = playerList[
-                    uint256(keccak256(abi.encodePacked(block.timestamp - 1))) %
-                        playerList.length
+                    uint256(keccak256(abi.encodePacked(block.timestamp))) -
+                        (1 % playerList.length)
                 ];
             }
 
