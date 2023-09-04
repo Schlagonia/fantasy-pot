@@ -16,7 +16,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     using SafeERC20 for ERC20;
 
     struct Player {
-        bool registered;
+        bool activated;
         bool payed;
         bool couped;
     }
@@ -57,7 +57,6 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     uint256 public immutable buyIn;
 
     // Storage for Games.
-
     mapping(bytes32 => TicTacToe) public TicTacToeGames;
 
     // Number of players that have couped against
@@ -226,8 +225,8 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         // If we are past the start no more deposits.
         if (block.timestamp > start) return 0;
 
-        // If the player has been registered but hasn't payed.
-        if (players[_owner].registered && !players[_owner].payed) {
+        // If the player has been activated but hasn't payed.
+        if (players[_owner].activated && !players[_owner].payed) {
             return buyIn;
         } else {
             return 0;
@@ -273,9 +272,9 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      */
     function activateNewPlayer(address _player) external onlyManagement {
         require(start > block.timestamp, "season started");
-        require(!players[_player].registered, "already registered");
+        require(!players[_player].activated, "already activated");
 
-        players[_player].registered = true;
+        players[_player].activated = true;
     }
 
     /**
@@ -289,6 +288,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     function winnerWinnerChickenDinner(
         address _winner
     ) external onlyManagement {
+        require(block.timestamp >= end, "Seasons still going");
         require(winner == address(0), "Winner already Declared");
         require(players[_winner].payed, "!playing");
         require(TokenizedStrategy.balanceOf(_winner) != 0, "!shares");
@@ -470,7 +470,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         address _player1,
         address _player2,
         uint256 _buyIn
-    ) public view returns (bytes32) {
+    ) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_player1, _player2, _buyIn));
     }
 
@@ -543,7 +543,6 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      * will be chosen at random to take over the duties.
      */
     function stageACoup() external {
-        require(players[msg.sender].registered, "!registered");
         require(players[msg.sender].payed, "!payed");
         require(!players[msg.sender].couped, "already couped");
         require(msg.sender != TokenizedStrategy.management(), "No Suicide");
@@ -552,7 +551,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         couped++;
         players[msg.sender].couped = true;
 
-        // If the full party has spoken.
+        // If the full tribe has spoken.
         if (couped == playerList.length - 1) {
             // Remove the current manager and choose a new one at random.
             address newManagement = playerList[
@@ -570,7 +569,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
             // Set your new Dictator.
             _strategyStorage().management == newManagement;
 
-            // Reset `couped` in case it doesn't work out with the new guy
+            // Reset `couped` in case it doesn't work out with the new guy.
             couped = 0;
         }
     }
@@ -583,7 +582,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         uint256 assets,
         address receiver
     ) external returns (uint256 shares) {
-        require(players[receiver].registered, "!registered");
+        require(players[receiver].activated, "!activated");
         require(!players[receiver].payed, "Already payed");
         require(assets == buyIn, "Wrong amount");
 

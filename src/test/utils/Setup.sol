@@ -7,6 +7,7 @@ import {ExtendedTest} from "./ExtendedTest.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {FantasyPot} from "../../FantasyPot.sol";
+import {FantasyPotFactory} from "../../FantasyPotFactory.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 
 // Inherit the events so they can be checked if desired.
@@ -23,7 +24,10 @@ interface IFactory {
 contract Setup is ExtendedTest, IEvents {
     // Contract instancees that we will use repeatedly.
     ERC20 public asset;
+    FantasyPotFactory public potFactory;
     IStrategyInterface public strategy;
+
+    uint256 public buyIn = 1_000e18;
 
     mapping(string => address) public tokenAddrs;
 
@@ -66,22 +70,18 @@ contract Setup is ExtendedTest, IEvents {
         vm.label(factory, "factory");
         vm.label(address(asset), "asset");
         vm.label(management, "management");
+        vm.label(address(potFactory), "Pot Factory");
         vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
     }
 
     function setUpStrategy() public returns (address) {
+        potFactory = new FantasyPotFactory();
         // we save the strategy as a IStrategyInterface to give it the needed interface
+        vm.prank(management);
         IStrategyInterface _strategy = IStrategyInterface(
-            address(new FantasyPot(address(asset), "Tokenized Strategy", 1))
+            potFactory.newFantasyPot(address(asset), "Test Pot", buyIn)
         );
-
-        // set keeper
-        _strategy.setKeeper(keeper);
-        // set treasury
-        _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
-        // set management of the strategy
-        _strategy.setPendingManagement(management);
 
         vm.prank(management);
         _strategy.acceptManagement();

@@ -5,20 +5,24 @@ import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 import {FantasyPot} from "./FantasyPot.sol";
 
 contract FantasyPotFactory {
+    event NewFantasyPot(address _fantasyPot, address _asset, uint256 _buyIn);
+
     function newFantasyPot(
         address _asset,
         string memory _name,
         uint256 _buyIn
     ) external returns (address) {
-        IStrategyInterface newPot = IStrategyInterface(address(new FantasyPot(_asset, _name, _buyIn)));
+        IStrategyInterface newPot = IStrategyInterface(
+            address(new FantasyPot(_asset, _name, _buyIn))
+        );
 
-        // Set profit unlock time to 1
+        // Set profit unlock time to 1.
         newPot.setProfitMaxUnlockTime(1);
-        // Set fee to minimum
-        newPot.setPerformanceFee(newPot.MIN_FEE());
-        // Set Pending mgmt
+
+        // Set Pending Management.
         newPot.setPendingManagement(msg.sender);
-        
+
+        emit NewFantasyPot(address(newPot), _asset, _buyIn);
         return address(newPot);
     }
 }

@@ -14,183 +14,82 @@ contract OperationTest is Setup {
         assertTrue(address(0) != address(strategy));
         assertEq(strategy.asset(), address(asset));
         assertEq(strategy.management(), management);
-        assertEq(strategy.performanceFeeRecipient(), performanceFeeRecipient);
-        assertEq(strategy.keeper(), keeper);
         // TODO: add additional check on strat params
     }
 
     function test_operation(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        vm.assume(_amount != buyIn);
 
-        // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
+        uint256 start = strategy.start();
 
-        // TODO: Implement logic so totalDebt is _amount and totalIdle = 0.
-        checkStrategyTotals(strategy, _amount, 0, _amount);
+        assertGt(start, block.timestamp);
 
-        // Earn Interest
-        skip(1 days);
-
-        // Report profit
-        vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
-
-        // Check return Values
-        assertGe(profit, 0, "!profit");
-        assertEq(loss, 0, "!loss");
-
-        skip(strategy.profitMaxUnlockTime());
-
-        uint256 balanceBefore = asset.balanceOf(user);
-
-        // Withdraw all funds
+        airdrop(asset, user, buyIn);
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        asset.approve(address(strategy), buyIn);
 
-        assertGe(
-            asset.balanceOf(user),
-            balanceBefore + _amount,
-            "!final balance"
-        );
-    }
-
-    function test_profitableReport(
-        uint256 _amount,
-        uint16 _profitFactor
-    ) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-        _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
-
-        // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-
-        // TODO: Implement logic so totalDebt is _amount and totalIdle = 0.
-        checkStrategyTotals(strategy, _amount, 0, _amount);
-
-        // Earn Interest
-        skip(1 days);
-
-        // TODO: implement logic to simulate earning interest.
-        uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
-        airdrop(asset, address(strategy), toAirdrop);
-
-        // Report profit
-        vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
-
-        // Check return Values
-        assertGe(profit, toAirdrop, "!profit");
-        assertEq(loss, 0, "!loss");
-
-        skip(strategy.profitMaxUnlockTime());
-
-        uint256 balanceBefore = asset.balanceOf(user);
-
-        // Withdraw all funds
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        vm.expectRevert("!activated");
+        strategy.deposit(buyIn, user);
 
-        assertGe(
-            asset.balanceOf(user),
-            balanceBefore + _amount,
-            "!final balance"
-        );
-    }
+        vm.prank(management);
+        strategy.activateNewPlayer(user);
 
-    function test_profitableReport_withFees(
-        uint256 _amount,
-        uint16 _profitFactor
-    ) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-        _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
-
-        // Set protofol fee to 0 and perf fee to 10%
-        setFees(0, 1_000);
-
-        // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-
-        // TODO: Implement logic so totalDebt is _amount and totalIdle = 0.
-        checkStrategyTotals(strategy, _amount, 0, _amount);
-
-        // Earn Interest
-        skip(1 days);
-
-        // TODO: implement logic to simulate earning interest.
-        uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
-        airdrop(asset, address(strategy), toAirdrop);
-
-        // Report profit
-        vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
-
-        // Check return Values
-        assertGe(profit, toAirdrop, "!profit");
-        assertEq(loss, 0, "!loss");
-
-        skip(strategy.profitMaxUnlockTime());
-
-        // Get the expected fee
-        uint256 expectedShares = (profit * 1_000) / MAX_BPS;
-
-        assertEq(strategy.balanceOf(performanceFeeRecipient), expectedShares);
-
-        uint256 balanceBefore = asset.balanceOf(user);
-
-        // Withdraw all funds
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        vm.expectRevert("Wrong amount");
+        strategy.deposit(_amount, user);
 
-        assertGe(
-            asset.balanceOf(user),
-            balanceBefore + _amount,
-            "!final balance"
-        );
+        vm.prank(user);
+        strategy.deposit(buyIn, user);
+
+        vm.prank(user);
+        vm.expectRevert("Already payed");
+        strategy.deposit(buyIn, user);
+
+        checkStrategyTotals(strategy, buyIn, buyIn, 0);
+
+        vm.prank(management);
+        strategy.activateNewPlayer(management);
+
+        airdrop(asset, management, buyIn);
+        vm.prank(management);
+        asset.approve(address(strategy), buyIn);
+
+        vm.prank(management);
+        strategy.deposit(buyIn, management);
+
+        assertGt(strategy.balanceOf(management), 0);
+
+        vm.prank(management);
+        strategy.activateNewPlayer(performanceFeeRecipient);
+
+        uint256 diff = start - block.timestamp;
+
+        skip(diff + 1);
 
         vm.prank(performanceFeeRecipient);
-        strategy.redeem(
-            expectedShares,
-            performanceFeeRecipient,
-            performanceFeeRecipient
-        );
+        vm.expectRevert("ERC4626: deposit more than max");
+        strategy.deposit(buyIn, performanceFeeRecipient);
 
-        checkStrategyTotals(strategy, 0, 0, 0);
+        diff = strategy.end() - block.timestamp;
 
-        assertGe(
-            asset.balanceOf(performanceFeeRecipient),
-            expectedShares,
-            "!perf fee out"
-        );
-    }
+        skip(diff + 1);
+        vm.prank(management);
+        strategy.winnerWinnerChickenDinner(user);
 
-    function test_tendTrigger(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        assertGt(strategy.balanceOf(user), 0);
+        assertEq(strategy.balanceOf(management), 0);
 
-        assertTrue(!strategy.tendTrigger());
+        skip(20);
 
-        // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
+        assertGt(strategy.totalAssets(), buyIn * 2);
+        assertEq(strategy.management(), user);
 
-        assertTrue(!strategy.tendTrigger());
-
-        // Skip some time
-        skip(1 days);
-
-        assertTrue(!strategy.tendTrigger());
-
-        vm.prank(keeper);
-        strategy.report();
-
-        assertTrue(!strategy.tendTrigger());
-
-        // Unlock Profits
-        skip(strategy.profitMaxUnlockTime());
-
-        assertTrue(!strategy.tendTrigger());
+        uint256 before = asset.balanceOf(user);
 
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        strategy.redeem(buyIn, user, user);
 
-        assertTrue(!strategy.tendTrigger());
+        assertGt(asset.balanceOf(user), before + (buyIn * 2));
     }
 }
