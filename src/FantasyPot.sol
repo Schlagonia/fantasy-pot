@@ -83,9 +83,12 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         ERC20(_asset).safeApprove(address(lendingPool), type(uint256).max);
 
         // Set the buy in.
+        require(_buyIn != 0, "you gotta pump those numbers up");
         buyIn = _buyIn;
 
         // start and end Times.
+        require(_start > block.timestamp, "how you gonna buy in?");
+        require(_end > _start, "dumbass");
         start = _start;
         end = _end;
     }
@@ -364,7 +367,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
             _player1 != address(0) && _player2 != address(0),
             "Vitalik Can't play"
         );
-        require(_player1 != _player2, "freindly fire");
+        require(_player1 != _player2, "friendly fire");
         require(_player1 == msg.sender, "!player1");
         // Buy in has to be divisible by 20 for the Pot fee.
         require(_buyIn > 20, "What is this? A wager for ants!");
@@ -391,6 +394,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      */
     function acceptNewTicTacToeGame(bytes32 _gameId) external {
         TicTacToe memory game = TicTacToeGames[_gameId];
+        require(block.timestamp < end, "Season has ended");
         require(game.player1 != address(0), "must start game first");
         require(game.player2 == msg.sender, "Cant accept someone elses game");
 
@@ -471,7 +475,9 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
             delete TicTacToeGames[_gameId];
         } else {
             // Set the next turn.
-            game.turn = marker == 1 ? game.player2 : game.player1;
+            TicTacToeGames[_gameId].turn = marker == 1
+                ? game.player2
+                : game.player1;
         }
     }
 
@@ -575,11 +581,23 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
                 ];
             }
 
+            require(players[newManagement].payed, "Oopsie");
+
             // Set your new Dictator.
             _strategyStorage().management == newManagement;
 
             // Reset `couped` in case it doesn't work out with the new guy.
             couped = 0;
+
+            // Give everyone a fresh start.
+            address[] memory _playerList = playerList;
+            uint256 numPlayers = _playerList.length;
+            for (uint256 i; i < numPlayers; ++i) {
+                address _player = _playerList[i];
+
+                // You would never have done that to Jimmy.
+                players[_player].couped = false;
+            }
         }
     }
 

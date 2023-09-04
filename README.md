@@ -9,7 +9,7 @@ This pot is built as a Yearn V3 "Tokenized Strategy". For more information on th
 
 The Factory is deployed on Polygon at :
 
-You can deploy your own Pot either on Polyscan or through a script by calling 
+You can deploy your own Pot either on PolygonScan or through a script by calling 
 
     factory.newFantasyPot(_asset, "Name for your pot", _buyIn)
     
