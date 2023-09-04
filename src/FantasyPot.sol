@@ -12,6 +12,9 @@ import {IAToken} from "./interfaces/Aave/V3/IAtoken.sol";
 
 import {TokenizedHelper} from "./TokenizedHelper.sol";
 
+/**
+ * @title Tokenized Fantasy Pot.
+ */
 contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     using SafeERC20 for ERC20;
 
@@ -31,7 +34,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
 
     // Aave pool to deposit and withdraw through.
     IPool public constant lendingPool =
-        IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
+        IPool(0x794a61358D6845594F94dc1DB02A252b5b4814aD);
 
     // The token that we get in return for deposits.
     IAToken public immutable aToken;

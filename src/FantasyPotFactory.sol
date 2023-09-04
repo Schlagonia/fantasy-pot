@@ -4,6 +4,9 @@ pragma solidity 0.8.18;
 import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 import {FantasyPot} from "./FantasyPot.sol";
 
+/**
+ * @title Tokenized Fantasy Pot Factory.
+ */
 contract FantasyPotFactory {
     event NewFantasyPot(address _fantasyPot, address _asset, uint256 _buyIn);
 
