@@ -576,8 +576,8 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
             if (newManagement == TokenizedStrategy.management()) {
                 // New boss cant be the same as the old boss.
                 newManagement = playerList[
-                    uint256(keccak256(abi.encodePacked(block.timestamp))) -
-                        (1 % playerList.length)
+                    (uint256(keccak256(abi.encodePacked(block.timestamp))) -
+                        1) % playerList.length
                 ];
             }
 
