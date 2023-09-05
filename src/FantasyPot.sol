@@ -136,7 +136,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     function _freeFunds(uint256 _amount) internal override {
         lendingPool.withdraw(
             asset,
-            type(uint256).max, // withdraw will only happen once. withdraw max.
+            Math.min(aToken.balanceOf(address(this)), _amount),
             address(this)
         );
     }
@@ -204,7 +204,6 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      * @param _totalIdle The current amount of idle funds that are available to deploy.
      */
     function _tend(uint256 _totalIdle) internal override {
-        // why instead of calculating balance you use the _totalIdle var?
         uint256 balance = ERC20(asset).balanceOf(address(this));
         if (balance != 0) {
             _deployFunds(balance);
@@ -268,7 +267,6 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         address _owner
     ) public view override returns (uint256) {
         // only after end
-        // added here because you had the same logic in deposit limit
         if (block.timestamp < end) return 0;
 
         // Only the winner can withdraw.
