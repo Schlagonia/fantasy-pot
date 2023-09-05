@@ -6,7 +6,7 @@ This pot is built as a Yearn V3 "Tokenized Strategy". For more information on th
 
 ## Deployment
 
-The Factory is deployed on Polygon at :
+The Factory is deployed on Polygon at : https://polygonscan.com/address/0xb19f410b95e2d263289443ee3b61f2c1550412d8
 
 You can deploy your own Pot either on PolygonScan or through a script by calling 
 
