@@ -44,16 +44,16 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     uint256 public immutable start;
 
     // time stamp of End of regular season.
-    // Cant declare a winner or withdra till this time.
+    // Can't declare a winner or withdraw till this time.
     uint256 public immutable end;
 
     // Winner of the league.
     address public winner;
 
-    // Mapping of a players address to theie Player struct
+    // Mapping of a players address to their Player struct
     mapping(address => Player) public players;
 
-    // List of all players who registerd and payed
+    // List of all players who registered and payed
     address[] public playerList;
 
     // Amount required to buy in.
@@ -63,7 +63,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     mapping(bytes32 => TicTacToe) public TicTacToeGames;
 
     // Number of players that have couped against
-    // The current managment.
+    // The current management.
     uint256 public couped;
 
     constructor(
@@ -136,7 +136,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     function _freeFunds(uint256 _amount) internal override {
         lendingPool.withdraw(
             asset,
-            Math.min(aToken.balanceOf(address(this)), _amount),
+            type(uint256).max, // withdraw will only happen once. withdraw max.
             address(this)
         );
     }
@@ -172,7 +172,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         require(block.timestamp > end, "Season hasnt ended");
 
         _totalAssets =
-            aToken.balanceOf(address(this)) +
+            aToken.balanceOf(address(this)) + // this assumes aToken == asset
             ERC20(asset).balanceOf(address(this));
     }
 
@@ -204,6 +204,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
      * @param _totalIdle The current amount of idle funds that are available to deploy.
      */
     function _tend(uint256 _totalIdle) internal override {
+        // why instead of calculating balance you use the _totalIdle var?
         uint256 balance = ERC20(asset).balanceOf(address(this));
         if (balance != 0) {
             _deployFunds(balance);
@@ -266,6 +267,10 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     function availableWithdrawLimit(
         address _owner
     ) public view override returns (uint256) {
+        // only after end
+        // added here because you had the same logic in deposit limit
+        if (block.timestamp < end) return 0;
+
         // Only the winner can withdraw.
         if (_owner == winner) return type(uint256).max;
 
@@ -290,7 +295,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
     }
 
     /**
-     * @notice Allows managment to declare a winner!
+     * @notice Allows management to declare a winner!
      *
      * Will burn every other players shares and report the accumulated
      * profits so that the winner can now withdraw the full amount
@@ -574,7 +579,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
                     playerList.length
             ];
             if (newManagement == TokenizedStrategy.management()) {
-                // New boss cant be the same as the old boss.
+                // New boss can't be the same as the old boss.
                 newManagement = playerList[
                     (uint256(keccak256(abi.encodePacked(block.timestamp))) -
                         1) % playerList.length
@@ -584,7 +589,7 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
             require(players[newManagement].payed, "Oopsie");
 
             // Set your new Dictator.
-            _strategyStorage().management == newManagement;
+            _strategyStorage().management = newManagement;
 
             // Reset `couped` in case it doesn't work out with the new guy.
             couped = 0;
@@ -642,12 +647,12 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         uint256 shares,
         address receiver
     ) external returns (uint256 assets) {
-        require(false, "Must Deposit");
+        revert("Must Deposit");
     }
 
     // Dont allow transfers so we can burn the shares of the losers
     function transfer(address to, uint256 amount) external returns (bool) {
-        require(false, "NO GIVE BACKS!");
+        revert("NO GIVE BACKS!");
     }
 
     function transferFrom(
@@ -655,6 +660,6 @@ contract FantasyPot is BaseTokenizedStrategy, TokenizedHelper {
         address to,
         uint256 amount
     ) public returns (bool) {
-        require(false, "Nice Try");
+        revert("Nice Try");
     }
 }
