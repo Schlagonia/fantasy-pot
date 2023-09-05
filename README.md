@@ -4,7 +4,6 @@ This repo contains the code and instructions to use deploy your own Fantasy Pot 
 
 This pot is built as a Yearn V3 "Tokenized Strategy". For more information on the Tokenized Strategy please visit the [TokenizedStrategy Repo](https://github.com/yearn/tokenized-strategy).
 
-
 ## Deployment
 
 The Factory is deployed on Polygon at :
@@ -17,6 +16,9 @@ You can deploy your own Pot either on PolygonScan or through a script by calling
     factory.newFantasyPot(_asset, "Name for your pot", _buyIn, _startTimestamp, _stopTimestamp)
 
 Where `asset` is the ERC20 token to use for the buy in that has a corresponding Aave market. and `_buyIn` is the amount denominated in `asset` that is required to buy in to the pot.
+
+- `start`: The timestamp when deposits are locked and you can no longer activate new players. Defaults to start of regular season. September 7th, 2023 8:20 EST.
+- `end`: The timestamp that all funds are locked until. After the `end` the management can declare a winner. Defaults to the end of the regular season. January 7th, 2024 Midnight EST.
 
 ## Setup
 
@@ -34,6 +36,15 @@ NOTE: Deposits are shut off after the `start` timestamp and are not possible to 
 Once the season starts the funds are locked till the `end`. But will earn yield the whole period.
 
 During the season players are able to challenge each other to games of [Tic Tac Toe](https://github.com/Schlagonia/fantasy-pot/blob/master/src/FantasyPot.sol#L329-L347). The winner earns the losers reward minus a 10% cut to increase the overall final pot.
+
+#### Game Functions
+
+- `startNewTicTacToeGame`: Starts a new game of Tic Tac Toe.
+- `acceptNewTicTacToeGame`: Accepts a previously started game.
+- `makeMove`: Makes a move in the game of Tic Tac Toe.
+- `getGameId`: Returns the game id based on the players and the buy-in.
+- `getBoard`: Returns the current board of the game.
+- `getNextPlayer`: Returns the address of the next player.
 
 Or if the manager is no longer trusted players can [Stage a Coup](https://github.com/Schlagonia/fantasy-pot/blob/master/src/FantasyPot.sol#L537-L575) to take over the management position before the end of the season.
 
